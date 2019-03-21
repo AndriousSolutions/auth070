@@ -1,6 +1,6 @@
 name: auth070
 description: Authorization Library Package to log into Google, Facebook, or by Username and Password.
-version: 1.0.0
+version: 1.0.1
 author: Greg Perry <support@andrioussolutions.com>
 homepage: https://github.com/AndriousSolutions/auth
 repository: https://github.com/AndriousSolutions/auth
@@ -15,6 +15,13 @@ dependencies:
   firebase_auth: "0.7.0"
 
   google_sign_in: "3.2.4"
+
+  # https://pub.dartlang.org/packages/http#-changelog-tab-
+  http: ^0.12.0+1
+  #^0.11.3+17
+
+  # https://pub.dartlang.org/packages/flutter_webview_plugin#-changelog-tab-
+  flutter_webview_plugin: ^0.3.1
 
 dev_dependencies:
   flutter_test:

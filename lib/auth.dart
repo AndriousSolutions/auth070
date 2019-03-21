@@ -24,11 +24,10 @@
 library auth;
 
 import 'dart:async';
-import 'package:meta/meta.dart';
-
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-//import 'package:flutter_facebook_login/flutter_facebook_login.dart';
+import 'package:auth070/flutteroauth.dart';
 
 typedef void GoogleListener(GoogleSignInAccount event);
 typedef void FireBaseListener(FirebaseUser user);
@@ -300,6 +299,49 @@ class Auth {
     }
     return user != null;
   }
+
+  static Future<bool> signInWithFacebook({@required String id, @required String secret}) async {
+    id ??= "";
+    secret ??= "";
+    assert(id.isNotEmpty,
+    "Must pass an id to signInWithFacebook() function!");
+    assert(secret.isNotEmpty,
+    "Must pass the secret to signInWithFacebook() function!");
+    if(id.isEmpty || secret.isEmpty) return Future.value(false);
+    final OAuth flutterOAuth = FlutterOAuth(Config(
+        "https://www.facebook.com/dialog/oauth",
+        "https://graph.facebook.com/v2.2/oauth/access_token",
+        id,
+        secret,
+        "http://localhost:8080/",
+        "code"));
+    Token token = await flutterOAuth.performAuthorization();
+    AuthCredential credential = FacebookAuthProvider.getCredential(accessToken: token.accessToken);
+    return signInWithCredential(credential: credential);
+  }
+
+//  static Future<bool> signInWithTwitter({@required String key, @required String secret, @required String callbackURI}) async {
+//    key ??= "";
+//    secret ??= "";
+//    callbackURI ??= "";
+//    assert(key.isNotEmpty,
+//    "Must pass an key to signInWithTwitter() function!");
+//    assert(secret.isNotEmpty,
+//    "Must pass the secret to signInWithTwitter() function!");
+//    assert(callbackURI.isNotEmpty,
+//    "Must pass the callback URI to signInWithTwitter() function!");
+//    if(key.isEmpty || secret.isEmpty || callbackURI.isEmpty) return Future.value(false);
+//    final OAuth flutterOAuth = FlutterOAuth(Config(
+//        "https://api.twitter.com/oauth/request_token",
+//        "https://api.twitter.com/oauth/authenticate",
+//        key,
+//        secret,
+//        callbackURI,
+//        "code"));
+//    Token accessToken = await flutterOAuth.performAuthorization();
+//    AuthCredential credential = TwitterAuthProvider.getCredential(authToken: accessToken.accessToken, authTokenSecret:);
+//    return signInWithCredential(credential: credential);
+//  }
 
   static Future<bool> signInWithCredential(
       {@required AuthCredential credential,
