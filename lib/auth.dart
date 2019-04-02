@@ -23,11 +23,31 @@
 ///
 library auth;
 
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:auth070/flutteroauth.dart';
+import 'dart:async' show Future, StreamSubscription;
+
+import 'package:flutter/material.dart' show required;
+
+import 'package:firebase_auth/firebase_auth.dart'
+    show
+        AuthCredential,
+        FacebookAuthProvider,
+        FirebaseAuth,
+        FirebaseUser,
+        GithubAuthProvider,
+        GoogleAuthProvider,
+        TwitterAuthProvider,
+        UserUpdateInfo;
+import 'package:google_sign_in/google_sign_in.dart'
+    show
+        GoogleIdentity,
+        GoogleSignIn,
+        GoogleSignInAccount,
+        GoogleSignInAuthentication,
+        SignInOption;
+import 'package:auth070/src/oauth.dart';
+import 'package:device_id/device_id.dart' show DeviceId;
+export 'package:auth070/src/oauth.dart';
+import 'package:prefs/prefs.dart' show Prefs;
 
 typedef void GoogleListener(GoogleSignInAccount event);
 typedef void FireBaseListener(FirebaseUser user);
@@ -207,23 +227,6 @@ class Auth {
             googleUser.id == fireBaseUser?.providerData[1]?.uid);
   }
 
-  /// Firebase Login.
-  static Future<bool> signInAnonymously(
-      [void listener(FirebaseUser user)]) async {
-    initFireBase(listener);
-
-    FirebaseUser user;
-    try {
-      user = await _fireBaseAuth.signInAnonymously();
-      await _setUserFromFireBase(user);
-    } catch (ex) {
-      _ex = ex;
-      user = null;
-    }
-    // Must return null until 'awaits' are completed. -gp
-    return user?.uid?.isNotEmpty;
-  }
-
   static Future<bool> createUserWithEmailAndPassword(
       {@required String email,
       @required String password,
@@ -276,6 +279,23 @@ class Auth {
     return reset;
   }
 
+  /// Firebase Login.
+  static Future<bool> signInAnonymously(
+      [void listener(FirebaseUser user)]) async {
+    initFireBase(listener);
+
+    FirebaseUser user;
+    try {
+      user = await _fireBaseAuth.signInAnonymously();
+      await _setUserFromFireBase(user);
+    } catch (ex) {
+      _ex = ex;
+      user = null;
+    }
+    // Must return null until 'awaits' are completed. -gp
+    return user?.uid?.isNotEmpty;
+  }
+
   static Future<bool> signInWithEmailAndPassword(
       {@required String email,
       @required String password,
@@ -300,63 +320,162 @@ class Auth {
     return user != null;
   }
 
-  static Future<bool> signInWithFacebook({@required String id, @required String secret}) async {
-    id ??= "";
-    secret ??= "";
-    assert(id.isNotEmpty,
-    "Must pass an id to signInWithFacebook() function!");
+  static Future<bool> signInWithFacebook() async {
+    var id = await _id('Facebook', 'id');
+
+    var secret = await _id('Facebook', 'secret');
+
+    assert(id.isNotEmpty, "Must pass an id to signInWithFacebook() function!");
+
     assert(secret.isNotEmpty,
-    "Must pass the secret to signInWithFacebook() function!");
-    if(id.isEmpty || secret.isEmpty) return Future.value(false);
-    final OAuth flutterOAuth = FlutterOAuth(Config(
-        "https://www.facebook.com/dialog/oauth",
-        "https://graph.facebook.com/v2.2/oauth/access_token",
-        id,
-        secret,
-        "http://localhost:8080/",
-        "code"));
-    Token token = await flutterOAuth.performAuthorization();
-    AuthCredential credential = FacebookAuthProvider.getCredential(accessToken: token.accessToken);
+        "Must pass the secret to signInWithFacebook() function!");
+    if (id.isEmpty || secret.isEmpty) return Future.value(false);
+
+    final OAuth oAuth = OAuth(
+      authorize: AuthUrl(
+          url:
+              "https://www.facebook.com/dialog/oauth?client_id=$id&redirect_uri=http://localhost:8080/"),
+      token: AuthUrl(
+          url: "https://graph.facebook.com/v2.2/oauth/access_token",
+          headers: {
+            "Accept": 'application/json',
+            "Content-Type": 'application/json'
+          },
+          body: {
+            "client_id": id,
+            "client_secret": secret,
+            "redirect_uri": "http://localhost:8080/"
+          }),
+    );
+
+    Map<String, dynamic> auth = await oAuth.performAuthorization();
+    _accessToken = auth['access_token'];
+    AuthCredential credential =
+        FacebookAuthProvider.getCredential(accessToken: _accessToken);
     return signInWithCredential(credential: credential);
   }
 
-//  static Future<bool> signInWithTwitter({@required String key, @required String secret, @required String callbackURI}) async {
-//    key ??= "";
-//    secret ??= "";
-//    callbackURI ??= "";
-//    assert(key.isNotEmpty,
-//    "Must pass an key to signInWithTwitter() function!");
-//    assert(secret.isNotEmpty,
-//    "Must pass the secret to signInWithTwitter() function!");
-//    assert(callbackURI.isNotEmpty,
-//    "Must pass the callback URI to signInWithTwitter() function!");
-//    if(key.isEmpty || secret.isEmpty || callbackURI.isEmpty) return Future.value(false);
-//    final OAuth flutterOAuth = FlutterOAuth(Config(
-//        "https://api.twitter.com/oauth/request_token",
-//        "https://api.twitter.com/oauth/authenticate",
-//        key,
-//        secret,
-//        callbackURI,
-//        "code"));
-//    Token accessToken = await flutterOAuth.performAuthorization();
-//    AuthCredential credential = TwitterAuthProvider.getCredential(authToken: accessToken.accessToken, authTokenSecret:);
-//    return signInWithCredential(credential: credential);
-//  }
+  static Future<bool> signInWithGithub() async {
+    var id = await _id('Github', 'id');
+
+    var secret = await _id('Github', 'secret');
+
+    assert(id.isNotEmpty, "Must pass an id to signInWithGithub() function!");
+
+    assert(secret.isNotEmpty,
+        "Must pass the secret to signInWithGithub() function!");
+    if (id.isEmpty || secret.isEmpty) return Future.value(false);
+
+    final OAuth oAuth = OAuth(
+      authorize: AuthUrl(
+          url:
+              'https://github.com/login/oauth/authorize?client_id=$id&redirect_uri=http://localhost:8080/'),
+      token:
+          AuthUrl(url: 'https://github.com/login/oauth/access_token', headers: {
+        "Accept": 'application/json',
+        "Content-Type": 'application/json'
+      }, body: {
+        "client_id": id,
+        "client_secret": secret,
+        "redirect_uri": "http://localhost:8080/"
+      }),
+    );
+
+    Map<String, dynamic> auth = await oAuth.performAuthorization();
+    _accessToken = auth['access_token'];
+    AuthCredential credential =
+        GithubAuthProvider.getCredential(token: _accessToken);
+    return signInWithCredential(credential: credential);
+  }
+
+  static Future<bool> signInWithTwitter(
+      {String callbackUrl = 'http://localhost:8080/'}) async {
+    var id = await _id('Twitter', 'id');
+
+    var secret = await _id('Twitter', 'secret');
+
+    callbackUrl ??= "";
+
+    assert(id.isNotEmpty, "Must pass an key to signInWithTwitter() function!");
+
+    assert(secret.isNotEmpty,
+        "Must pass the secret to signInWithTwitter() function!");
+
+    assert(callbackUrl.isNotEmpty,
+        "Must pass the callback URI to signInWithTwitter() function!");
+
+    if (id.isEmpty || secret.isEmpty || callbackUrl.isEmpty)
+      return Future.value(false);
+
+    final OAuth oAuth = OAuth(
+      authorize: AuthUrl(
+          url: "https://api.twitter.com/oauth/request_token",
+          headers: OAuth.header(
+              secret: secret,
+              url: "https://api.twitter.com/oauth/request_token",
+              header: {
+                "oauth_callback": callbackUrl,
+                "oauth_nonce": DateTime.now().millisecondsSinceEpoch.toString(),
+                "oauth_signature_method": 'HMAC-SHA1',
+                "oauth_timestamp":
+                    (DateTime.now().millisecondsSinceEpoch / 1000)
+                        .floor()
+                        .toString(),
+                "oauth_consumer_key": id,
+                "oauth_version": '1.0',
+              })),
+      token: AuthUrl(
+          url: "https://api.twitter.com/oauth/authenticate",
+          responseType: 'oauth_token'),
+    );
+
+    Map<String, dynamic> auth = await oAuth.performAuthorization();
+    _accessToken = auth['secret'];
+    AuthCredential credential = TwitterAuthProvider.getCredential(
+        authToken: auth['accessToken'], authTokenSecret: _accessToken);
+    return signInWithCredential(credential: credential);
+  }
+
+  static Future<bool> signInWithInstagram() async {
+    var id = await _id('Instagram', 'id');
+
+    var secret = await _id('Instagram', 'secret');
+    assert(id.isNotEmpty, "Must pass an key to signInWithTwitter() function!");
+    assert(secret.isNotEmpty,
+        "Must pass the secret to signInWithTwitter() function!");
+    if (id.isEmpty || secret.isEmpty) return Future.value(false);
+    final OAuth oAuth = OAuth(
+      authorize: AuthUrl(
+        url:
+            "https://api.instagram.com/oauth/authorize?client_id=$id&redirect_uri=http://localhost:8080/&response_type=code",
+      ),
+      token: AuthUrl(
+        url: "https://api.instagram.com/oauth/access_token",
+        body: {
+          "client_id": id,
+          "client_secret": secret,
+          "redirect_uri": 'http://localhost:8080/',
+          "grant_type": 'authorization_code'
+        },
+      ),
+    );
+    Map<String, dynamic> auth = await oAuth.performAuthorization();
+    _accessToken = auth['access_token'];
+    AuthCredential credential =
+        FacebookAuthProvider.getCredential(accessToken: _accessToken);
+    return signInWithCredential(credential: credential);
+  }
 
   static Future<bool> signInWithCredential(
-      {@required AuthCredential credential,
-      void listener(FirebaseUser user)}) async {
+      {@required AuthCredential credential, FireBaseListener listener}) async {
+    if (credential == null) return Future.value(false);
     initFireBase(listener);
-
     final loggedIn = await alreadyLoggedIn();
     if (loggedIn) return loggedIn;
-
     FirebaseUser user;
     try {
-      user = await _fireBaseAuth.signInWithCredential(credential).then((usr) {
-        _setUserFromFireBase(usr);
-        return usr;
-      });
+      user = await _fireBaseAuth.signInWithCredential(credential);
+      await _setUserFromFireBase(user);
     } catch (ex) {
       _ex = ex;
       user = null;
@@ -389,6 +508,8 @@ class Auth {
     FirebaseUser user;
     try {
       user = await _fireBaseAuth?.currentUser();
+      // await keyword updates _user syncronously.
+      await _setUserFromFireBase(user);
     } catch (ex) {
       _ex = ex;
       user = null;
@@ -415,21 +536,19 @@ class Auth {
   static Future<bool> _setUserFromFireBase(FirebaseUser user) async {
     _idToken = await user?.getIdToken() ?? '';
 
-    _accessToken = '';
-
     _isEmailVerified = user?.isEmailVerified ?? false;
 
     _isAnonymous = user?.isAnonymous ?? true;
 
-    _providerId = user?.providerData[0]?.providerId ?? '';
+    _providerId = user?.providerId ?? '';
 
-    _uid = user?.providerData[0]?.uid ?? '';
+    _uid = user?.uid ?? '';
 
-    _displayName = user?.providerData[0]?.displayName ?? '';
+    _displayName = user?.displayName ?? '';
 
-    _photoUrl = '';
+    _photoUrl = user?.photoUrl ?? '';
 
-    _email = user?.providerData[0]?.email ?? '';
+    _email = user?.email ?? '';
 
     _user = user;
 
@@ -642,25 +761,31 @@ class Auth {
     return id.isNotEmpty;
   }
 
-  static Future<Null> signOut() async {
+  static Future<void> signOut() async {
     // Sign out with FireBase
     await _fireBaseAuth?.signOut();
+    await _setUserFromFireBase(null);
     // Sign out with google
     // Does not disconnect however.
     await _googleSignIn?.signOut();
   }
 
-  static Future<GoogleSignInAccount> disconnect() async {
+  static Future<void> disconnect() async {
     await signOut();
     // Disconnect from Google
-    return _googleSignIn?.disconnect();
+    await _googleSignIn?.disconnect();
   }
 
   /// Google Signed in.
-  static bool isSignedIn() => _fireBaseAuth?.currentUser() != null;
+  static Future<bool> isSignedIn() async => _googleSignIn?.isSignedIn();
 
   /// FireBase Logged in.
   static bool isLoggedIn() => _user != null;
+
+  static Future<bool> hasLoggedIn() async {
+    FirebaseUser user = await fireBaseUser();
+    return user != null;
+  }
 
   /// Access to the GoogleSignIn Object
   static GoogleSignIn get googleSignIn {
@@ -673,6 +798,8 @@ class Auth {
     init();
     return _googleSignIn?.currentUser;
   }
+
+  static GoogleIdentity get identity => GoogleUser();
 
   static Future<bool> sendEmailVerification() => _user?.sendEmailVerification();
 
@@ -708,4 +835,47 @@ class Auth {
 
   static String _accessToken = '';
   static String get accessToken => _accessToken;
+
+  static Future<String> _id(String platform, String key) async {
+    if (key == null) {
+      key = '';
+    } else {
+      key = key.trim();
+    }
+    if (platform == null) {
+      platform = '';
+    } else {
+      platform = platform.trim();
+    }
+    String id = await Prefs.getStringF(platform + key);
+    larKey ??= await DeviceId.getID;
+    if (id.isEmpty) {
+      id = await OAuth.get(platform, key);
+    } else {
+      id = length(id);
+    }
+    return id;
+  }
+}
+
+class GoogleUser implements GoogleIdentity {
+  GoogleUser()
+      : displayName = Auth.displayName,
+        email = Auth.email,
+        id = Auth.uid,
+        photoUrl = Auth.photoUrl {
+    assert(id != null);
+  }
+
+  @override
+  final String displayName;
+
+  @override
+  final String email;
+
+  @override
+  final String id;
+
+  @override
+  final String photoUrl;
 }
